@@ -1,0 +1,476 @@
+library(shiny)
+
+ui <- fluidPage(
+  navbarPage("MAA",
+             tabPanel("Data Set", 
+                      sidebarPanel(
+                        fileInput("file", "Upload", multiple = FALSE,
+                                  accept = c("text/csv",
+                                             "text/comma-separated-values,text/plain",
+                                             ".csv")), 
+                        tags$hr(), 
+                        radioButtons("vars", "Select data set:", choices = c("Full", "Columns")),
+                        selectInput("cols", "Choose Variables:", choices = "", selected = "", multiple = TRUE)
+                      ), 
+                      mainPanel(tableOutput("table"))
+             ),
+             
+             navbarMenu("Descriptives",
+                        tabPanel("Summary Tables", 
+                                 sidebarPanel(
+                                   selectInput("cols1", "Choose Variables:", choices = "", selected = "", multiple = TRUE)
+                                 ),
+                                 mainPanel(
+                                   verbatimTextOutput("summar")
+                                 )
+                        ),
+                        tabPanel("Frequency Tables",
+                                 sidebarPanel(
+                                   selectInput("cols2", "Choose Variable:", choices = "", multiple = TRUE), 
+                                   selectInput("cols3", "Choose Variable:", choices = "", multiple = TRUE) 
+                                 ),
+                                 mainPanel(
+                                   verbatimTextOutput("freq_tab")
+                                 )
+                        ),
+                        tabPanel("Plots",
+                                 sidebarPanel(
+                                   radioButtons("plotOpt", "Select Types:", choices = c("histogram", "bar", "scatter", "pie")),
+                                   selectInput("cols4", "Choose Variable:", choices = " ", multiple = TRUE)
+                                 ),
+                                 mainPanel(
+                                   plotOutput("plot")
+                                 )
+                        )
+             ),
+             navbarMenu("Marketing Analytics",
+                        tabPanel("Market Share", 
+                                 sidebarLayout(
+                                   sidebarPanel(
+                                     selectInput("msvarinput", "Choose the variable:", choices = "", selected = ""),
+                                     textInput("msmetric", "Choose Metric:", placeholder = "Write the metric name"), 
+                                     hr(), 
+                                     helpText("Following metrics are supported:"),
+                                     tags$ol(
+                                       tags$li("Market Share (ms)"),
+                                       tags$li("Brand Development Index (bdi)")
+                                     ),
+                                     hr()
+                                     
+                                   ),
+                                   mainPanel(
+                                     uiOutput("marketshare"), 
+                                     div(
+                                       tableOutput("mshare")
+                                     )
+                                     
+                                   )
+                                 )
+                        ),
+                        tabPanel("Promotions",
+                                 sidebarLayout(
+                                   sidebarPanel(
+                                     selectInput("promovarinput", "choose the variable:", choices = ""),
+                                     selectInput("promovarinput1", "choose the variable:", choices = ""),
+                                     selectInput("promovarinput2", "choose the variable:", choices = ""),
+                                     textInput("promometric", "Choose Metric:", placeholder = "Write the Metric Name"),
+                                     hr(),
+                                     helpText("the following metrics are supported:"),
+                                     tags$li("Total Sales (Ts)"),
+                                     tags$li("Lift"),
+                                     tags$li("Cost of Incremental Sales(cis)"),
+                                     tags$li("Coupon Redemption Rate(crr)"),
+                                     tags$li("Total coupon cost(tcc)"),
+                                     tags$li("Percentage Sales with coupon(psc)"),
+                                     tags$li("Percentage Sales on deal(psd)"),
+                                     tags$li("Pass-Through(pt)"),
+                                     tags$li("Price Waterfall(pw)")
+                                   ),
+                                   
+                                   mainPanel(uiOutput("promotions"),
+                                             div(
+                                               tableOutput("promo")
+                                             )
+                                   )
+                                   
+                                 )
+                                 
+                        )
+             ),
+             
+             
+             
+             tabPanel("Contact", 
+                      sidebarPanel(
+                        tags$h4("Contact")
+                        
+                      ), 
+                      mainPanel(textOutput("text")
+                      )
+             )
+             
+  )
+)
+
+
+server <- function(input, output, session) {
+  
+  data <- reactive({
+    req(input$file)
+    data.frame(read.csv(input$file$datapath))
+  })
+  
+  observeEvent(input$file, {
+    updateSelectInput(session, inputId = "cols", choices = names(data()))
+  })
+  
+  output$table <- renderTable(
+    {
+      df <- data()
+      if(input$vars == "Full"){
+        print(df)
+      } else {
+        print(df[input$cols])
+      }
+    }
+  )
+  
+  observeEvent(input$file, {
+    updateSelectInput(session, inputId = "cols1", choices = names(data()))
+  })
+  
+  # summary tab  
+  
+  summa <- reactive({
+    var <- data()[, input$cols1]
+    su <- summary(var)
+    return(su)
+  })
+  
+  output$summar <- renderPrint({
+    summa()
+  })
+  
+  # table tab
+  
+  observeEvent(input$file, {
+    updateSelectInput(session, inputId = "cols2", choices = names(data()))
+    updateSelectInput(session, inputId = "cols3", choices = names(data()))
+  })
+  
+  tab <- reactive({
+    var1 <- data()[, input$cols2]
+    var2 <- data()[, input$cols3]
+    ta <- table(var1, var2)
+    return(ta)
+  })
+  
+  output$freq_tab <- renderPrint({
+    tab()
+  })
+  
+  # plots
+  
+  observeEvent(input$file, {
+    updateSelectInput(session, inputId = "cols4", choices = names(data()))
+    
+  })
+  
+  output$plot <- renderPlot({
+    df <- data()
+    
+    if(input$plotOpt == "histogram"){
+      hist(df[,input$cols4], freq = FALSE)
+    } else if(input$plotOpt == "bar"){
+      barplot(df[,input$cols4])
+    } else if(input$plotOpt == "scatter"){
+      plot(df[,input$cols4])
+    } else {
+      pie(table(df[,input$cols4]))
+    }
+  })
+  
+  observeEvent(input$file, {
+    updateSelectInput(session, inputId = "msvarinput", choices = names(data()))
+    
+  })  
+  
+  msout <- reactive({
+    df <- data()
+    len <- length(df[, input$msvarinput])
+    total <- sum(df[, input$msvarinput])
+    
+    # df <- abs(round(rnorm(10)*10, 2))
+    x <- matrix(NA, len, 1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- df[, input$msvarinput][i]/total
+    }
+    return(cbind.data.frame(company = df[, 1], market_share = x))
+    
+    
+  })
+  
+  rmsout <- reactive({
+    df <- data()
+    len <- length(df[, input$msvarinput])
+    total <- sum(df[, input$msvarinput])
+    # df <- abs(round(rnorm(10)*10, 2))
+    x <- matrix(NA, len, 1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- df[, input$msvarinput][i]/total
+    }
+    lcms <- max(x)
+    return(cbind.data.frame(company = df[, 1], market_share = (x/lcms)))
+    
+    
+  })
+  
+  output$marketshare <- renderUI({
+    if (input$msmetric == "ms"){
+      withMathJax(
+        helpText("The Equation for 'Market Share': $$\\frac{Sales Revenue}{Total Market Revenue}$$")
+      )
+    } else if (input$msmetric == "rms"){
+      withMathJax(
+        helpText("Relative Market Share: $$\\frac{Brands Market Share}{Largest Competitors Marketshare}$$")
+      )
+    }
+  }
+  )
+  
+  output$mshare <- renderTable({
+    if (input$msmetric == "ms"){
+      msout()
+    } else if(input$msmetric == "rms"){
+      rmsout()
+    }
+    
+  })
+  observeEvent(input$file, {
+    updateSelectInput(session, inputId = "promovarinput", choices = names(data()))
+    updateSelectInput(session, inputId = "promovarinput1", choices = names(data()))
+    updateSelectInput(session, inputId = "promovarinput2", choices = names(data()))
+  })
+  
+  Tsout<- reactive({
+    df<- data()
+    var1<- df[, input$promovarinput]
+    var2<-df[, input$promovarinput1]
+    len<- nrow(df)
+    x<-matrix(NA,len,1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- rowSums(cbind(df[, input$promovarinput][i], df[, input$promovarinput1][i]))
+    }
+    
+    return(cbind.data.frame(company =df[, 1],total_sales= x))
+  })
+  
+  Lift<- reactive({
+    df<- data()
+    var1<- df[, input$promovarinput]
+    var2<-df[, input$promovarinput1]
+    len<- nrow(df)
+    x<-matrix(NA,len,1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- df[, input$promovarinput][i]/ df[, input$promovarinput1][i]
+    }
+    return(cbind.data.frame(company =df[, 1],Lift_from_promotions= x))
+    
+  })  
+  
+  Cis<- reactive({
+    df<- data()
+    var1<- df[, input$promovarinput]
+    var2<-df[, input$promovarinput1]
+    len<- nrow(df)
+    x<-matrix(NA,len,1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- df[, input$promovarinput][i]/ df[, input$promovarinput1][i]
+    }
+    return(cbind.data.frame(company =df[, 1],Cost_of_incremental_Sales= x))
+    
+  }) 
+  
+  Crr<- reactive({
+    df<- data()
+    var1<- df[, input$promovarinput]
+    var2<-df[, input$promovarinput1]
+    len<- nrow(df)
+    x<-matrix(NA,len,1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- df[, input$promovarinput][i]/ df[, input$promovarinput1][i]
+    }
+    return(cbind.data.frame(company =df[, 1],Coupon_redemption_rate= x))
+    
+  }) 
+  
+  Tcc<- reactive({
+    df<- data()
+    var1<- df[, input$promovarinput]
+    var2<-df[, input$promovarinput1]
+    var3<-df[, input$promovarinput2]
+    len<- nrow(df)
+    x<-matrix(NA,len,1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- rowSums(cbind(df[, input$promovarinput][i]*df[, input$promovarinput1][i],df[, input$promovarinput2][i]))
+    }
+    return(cbind.data.frame(company =df[, 1],Total_Coupon_ost= x))
+    
+  })
+  
+  Psc<- reactive({
+    df<- data()
+    var1<- df[, input$promovarinput]
+    var2<-df[, input$promovarinput1]
+    len<- nrow(df)
+    x<-matrix(NA,len,1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- df[, input$promovarinput][i]/ df[, input$promovarinput1][i]
+    }
+    return(cbind.data.frame(company =df[, 1],Percentage_Sales_with_Coupons= x))
+    
+  }) 
+  
+  Psd<- reactive({
+    df<- data()
+    var1<- df[, input$promovarinput]
+    var2<-df[, input$promovarinput1]
+    len<- nrow(df)
+    x<-matrix(NA,len,1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- df[, input$promovarinput][i]/ df[, input$promovarinput1][i]
+    }
+    return(cbind.data.frame(company =df[, 1],percetage_Sales_on_deal= x))
+    
+  }) 
+  
+  Pt<- reactive({
+    df<- data()
+    var1<- df[, input$promovarinput]
+    var2<-df[, input$promovarinput1]
+    len<- nrow(df)
+    x<-matrix(NA,len,1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- df[, input$promovarinput][i]/ df[, input$promovarinput1][i]
+    }
+    return(cbind.data.frame(company =df[, 1],pass_through = x))
+    
+  }) 
+  
+  Pw<- reactive({
+    df<- data()
+    var1<- df[, input$promovarinput]
+    var2<-df[, input$promovarinput1]
+    len<- nrow(df)
+    x<-matrix(NA,len,1)
+    for (i in 1:len){
+      # x[i] <- df[, input$msvarinput][i]/total
+      x[i] <- df[, input$promovarinput][i]/ df[, input$promovarinput1][i]
+    }
+    return(cbind.data.frame(company =df[, 1],price_waterfall = x))
+    
+  }) 
+  
+ 
+  
+  output$promotions<- renderUI({
+    if(input$promometric == "Ts")
+    {
+      withMathJax(
+        helpText( "the equation for Total sales is: $$Incremental sales + Baseline sales$$")
+        
+        
+      )
+    } else if(input$promometric == "Lift"){
+      withMathJax(
+        helpText( "the equation for Lift from promotions is: $$\\frac{Incremental sales}{Baseline sales}$$")
+      
+      )
+    }else if(input$promometric == "cis"){
+      withMathJax(
+        helpText( "the equation for cost of Incremental Sales is: $$\\frac{Marketing Spending}{Incremental sales}$$")
+        
+      )
+    }else if(input$promometric == "crr"){
+      withMathJax(
+        helpText( "the equation for coupon redemption rate is: $$\\frac{Coupons Redeemed}{Coupons Distributed}$$")
+        
+      )
+    }else if(input$promometric == "tcc"){
+      withMathJax(
+        helpText( "the equation for Total coupon cost is: $$cost per redemtion* coupons redeemed+coupons printing and distribution cost$$")
+        
+      )
+    }else if(input$promometric == "psc"){
+      withMathJax(
+        helpText( "the equation for percentage sales with coupon is: $$\\frac{Sales with Coupon}{Sales}$$")
+        
+      )
+    }else if(input$promometric == "psd"){
+      withMathJax(
+        helpText( "the equation for percentage sales on deal is: $$\\frac{Sales with temporary discount}{Total Sales}$$")
+        
+      )
+    }else if(input$promometric == "pt"){
+      withMathJax(
+        helpText( "the equation for Pass-Through is: $$\\frac{Value of Temporary Promotional Discounts Provided to consumers by the trade}{Value of Temporary Promotional Discounts Provided to trade by the manufacturer}$$")
+        
+      )
+    }else if(input$promometric == "pw"){
+      withMathJax(
+        helpText( "the equation for Price waterfall is: $$\\frac{Net price per unit}{List price per unit}$$")
+        
+      )
+    }
+  }
+  )
+  
+  
+  output$promo <- renderTable({
+    if(input$promometric == "Ts")
+    {
+      Tsout()
+    } else if(input$promometric == "Lift"){
+      Lift()
+    } else if(input$promometric == "cis"){
+      Cis()
+    } else if(input$promometric == "crr"){
+      Crr()
+    } else if(input$promometric == "tcc"){
+      Tcc()
+    } else if(input$promometric == "psc"){
+      Psc()
+    } else if(input$promometric == "psd"){
+      Psd()
+    } else if(input$promometric == "pt"){
+      Pt()
+    } else if(input$promometric == "pw"){
+      Pw()
+    }
+  })
+  
+  #contct informtaion 
+  
+  output$text <- renderText({
+    "Contact +919177573730"
+    
+  })   
+}
+
+shinyApp(ui,server)
+
+
+
+
+
+
